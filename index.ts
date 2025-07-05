@@ -16,15 +16,42 @@ const MIME_TYPES: Record<string, string> = {
   '.ico': 'image/x-icon',
 };
 
+/**
+ * Sanitizes a filename to be safe for storage and URL usage.
+ * Replicates the functionality of Python's werkzeug.utils.secure_filename.
+ * @param filename The filename to sanitize.
+ * @returns A sanitized filename.
+ */
+const secureFilename = (filename: string): string => {
+    // Normalize to NFD Unicode form to separate accents from letters,
+    // then remove the accent characters.
+    const withoutAccents = filename.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+    // Replace whitespace with underscores and remove characters that are not
+    // alphanumeric, underscores, hyphens, or dots.
+    const sanitized = withoutAccents
+        .replace(/\s+/g, '_')
+        .replace(/[^a-zA-Z0-9._-]/g, '');
+
+    // Remove leading/trailing separators and ensure it's not just a dot.
+    const final = sanitized.replace(/^[._-]+|[._-]+$/g, '');
+
+    if (final === '.' || final === '..') {
+        return '';
+    }
+
+    return final;
+};
+
 // Middleware to parse JSON requests - useful for potential future API endpoints
 app.use(express.json());
 
 // Serve static files from qrcodes directory
-app.get('/:filename', async (req, res) => {
-  const { filename } = req.params;
+app.get('/:filename', async (req: Request, res: Response) => {
+  const unsafeFilename = req.params.filename;
+  const filename = secureFilename(unsafeFilename);
 
-  // Improved validation to prevent directory traversal
-  if (!filename || path.basename(filename) !== filename) {
+  if (!filename) {
     res.status(400).send('Invalid filename');
     return;
   }
@@ -54,8 +81,6 @@ app.get('/:filename', async (req, res) => {
             res.status(500).send('Internal Server Error');
         }
     });
-
-    // No explicit return needed; response is handled by stream
 
   } catch (error: any) {
     if (error.code === 'ENOENT') {
@@ -98,3 +123,4 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 export default app;
+
